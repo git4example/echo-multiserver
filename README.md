@@ -1,46 +1,62 @@
-# Configurable Web Server
+# Multi-Port Echo Server
 
-A lightweight, configurable HTTP server designed for testing and simulating various application behaviors in containerized environments. Perfect for testing service discovery, load balancers, and application startup scenarios.
+A configurable HTTP server that can listen on multiple ports simultaneously, with customizable responses, status codes, and delays for each port. Perfect for testing microservices, service discovery, and load balancer configurations.
 
 ## Features
 
-- Configurable response content and HTTP status code
-- Adjustable startup delay to simulate application initialization
-- Configurable response delay to simulate processing time
+- Support for up to 5 concurrent HTTP servers on different ports
+- Individually configurable for each port:
+  - Custom response messages
+  - HTTP status codes
+  - Response delays
+- Configurable startup delay
 - JSON responses with request metadata
-- Graceful shutdown handling
 - Detailed logging with timestamps
+- Graceful shutdown handling
+- Health check support
 - Docker ready
 
 ## Quick Start
 
+### Build the Image
 ```bash
-# Build the image
-docker build -t configurable-server .
+docker build -t echo-server .
+
 
 # Run with default settings
-docker run -p 8080:8080 configurable-server
+docker run -p 8080:8080 echo-server
 
-# Run with custom configuration
-docker run -p 8080:8080 \
-    -e SERVER_PORT=8080 \
-    -e SERVER_RESPONSE="Custom Response" \
-    -e STARTUP_DELAY=5 \
-    -e RESPONSE_DELAY=2 \
-    -e STATUS_CODE=503 \
-    configurable-server
+# Run with custom configuration for multiple ports
+docker run -p 8080:8080 -p 8081:8081 -p 8082:8082 \
+    -e SERVER_PORT_1=8080 \
+    -e SERVER_RESPONSE_1="Hello from port 8080" \
+    -e STATUS_CODE_1=200 \
+    -e RESPONSE_DELAY_1=0 \
+    -e SERVER_PORT_2=8081 \
+    -e SERVER_RESPONSE_2="Hello from port 8081" \
+    -e STATUS_CODE_2=503 \
+    -e RESPONSE_DELAY_2=2 \
+    -e SERVER_PORT_3=8082 \
+    -e SERVER_RESPONSE_3="Hello from port 8082" \
+    -e STATUS_CODE_3=200 \
+    -e RESPONSE_DELAY_3=1 \
+    -e STARTUP_DELAY=10 \
+    echo-server
+
 ```
 
 ## Configuration
 
 The server can be configured using environment variables:
-Variable 	        Description 	                                Default 	        Example
-SERVER_PORT 	    Port the server listens on 	                    8080 	            8080
-SERVER_RESPONSE 	Custom response message 	                    "Hello World!" 	    "Custom Response"
-STARTUP_DELAY 	    Delay in seconds before server starts 	            0 	             5
-RESPONSE_DELAY 	    Delay in seconds before responding to each request 	0 	2
-STATUS_CODE 	    HTTP status code to return 	                        200 	503
+Variable 	        Description 	                                Default 	                    Example
+SERVER_PORT_n 	        Port number for server n 	                    8080 (n=1) 	8081
+SERVER_RESPONSE_n 	    Response message for port n 	               "Hello from port 8080!" (n=1) 	"Custom message"
+STATUS_CODE_n 	        HTTP status code for port n 	                200 (n=1) 	                    503
+RESPONSE_DELAY_n 	    Response delay in seconds for port n 	        0 (n=1) 	                    2
 
+Global configuration:
+Variable 	    Description 	                        Default 	Example
+STARTUP_DELAY 	Initial delay before accepting requests 	0 	    10
 
 ### Server Behavior
 Startup Process
@@ -52,22 +68,44 @@ Startup Process
 
 Example startup output:
 ```bash
-docker run -p 5678:5678     -e SERVER_PORT=5678     -e SERVER_RESPONSE="Custom Response"     -e STARTUP_DELAY=5     -e RESPONSE_DELAY=1     -e STATUS_CODE=200     configurable-server
+
+docker run -p 8080:8080 -p 8081:8081 -p 8082:8082     -e SERVER_PORT_1=8080     -e SERVER_RESPONSE_1="Hello from port 8080"     -e STATUS_CODE_1=200     -e RESPONSE_DELAY_1=0     -e SERVER_PORT_2=8081     -e SERVER_RESPONSE_2="Hello from port 8081"     -e STATUS_CODE_2=503     -e RESPONSE_DELAY_2=2     -e SERVER_PORT_3=8082     -e SERVER_RESPONSE_3="Hello from port 8082"     -e STATUS_CODE_3=200     -e RESPONSE_DELAY_3=1     -e STARTUP_DELAY=10 echo-multiserver
 
 ==================================================
-Starting Configurable Web Server at 2025-06-20 01:54:41 UTC
+Starting Multi-Port Configurable Web Server at 2025-06-20 04:21:13 UTC
 ==================================================
 
-Server Configuration:
+Server Configurations:
 --------------------
-Port:           5678
-Response:       Custom Response
-Startup Delay:  5s
-Response Delay: 1.0s
-Status Code:    200
 
-Server is listening on port 5678
+Port 8080:
+  Response:       Hello from port 8080
+  Status Code:    200
+  Response Delay: 0.0s
+
+Port 8081:
+  Response:       Hello from port 8081
+  Status Code:    503
+  Response Delay: 2.0s
+
+Port 8082:
+  Response:       Hello from port 8082
+  Status Code:    200
+  Response Delay: 1.0s
+
+Startup Delay:  10s
+
+Server is listening on port 8080
+
+Server is listening on port 8081
+
+Server is listening on port 8082
 Starting initialization phase...
+Startup in progress... 10s remaining
+Startup in progress... 9s remaining
+Startup in progress... 8s remaining
+Startup in progress... 7s remaining
+Startup in progress... 6s remaining
 Startup in progress... 5s remaining
 Startup in progress... 4s remaining
 Startup in progress... 3s remaining
@@ -75,7 +113,7 @@ Startup in progress... 2s remaining
 Startup in progress... 1s remaining
 
 
-Server is ready to accept connections at 2025-06-20 01:54:46 UTC
+All servers are ready to accept connections at 2025-06-20 04:21:23 UTC
 ==================================================
 ```
 
@@ -90,19 +128,33 @@ Each request is logged with timestamp
 
 ### Example response:
 ```json
-
 {
-    "message": "Custom Response",
-    "status": 503,
-    "path": "/",
-    "response_delay": 2.0
+  "message": "Hello from port 8080",
+  "status": 200,
+  "path": "/",
+  "port": 8080,
+  "response_delay": 0
 }
+```
+
+```bash
+
+[ec2-user@ip-172-31-38-100 ~]$ curl localhost:8080
+{"message": "Hello from port 8080", "status": 200, "path": "/", "port": 8080, "response_delay": 0.0}
+[ec2-user@ip-172-31-38-100 ~]$ curl localhost:8081
+{"message": "Hello from port 8081", "status": 503, "path": "/", "port": 8081, "response_delay": 2.0}
+[ec2-user@ip-172-31-38-100 ~]$ curl localhost:8082
+{"message": "Hello from port 8082", "status": 200, "path": "/", "port": 8082, "response_delay": 1.0}
+[ec2-user@ip-172-31-38-100 ~]$ curl localhost:8083
+curl: (7) Failed to connect to localhost port 8083 after 0 ms: Couldn't connect to server
 ```
 
 Example request log:
 ```bash
     
-[2025-06-20 01:22:10 UTC] "GET / HTTP/1.1" 503 -
+[2025-06-20 04:22:29 UTC] [Port 8080] "GET / HTTP/1.1" 200 -
+[2025-06-20 04:22:36 UTC] [Port 8081] "GET / HTTP/1.1" 503 -
+[2025-06-20 04:22:44 UTC] [Port 8082] "GET / HTTP/1.1" 200 -
 ```
 
 ### Shutdown Process
@@ -115,16 +167,12 @@ Example request log:
 Example shutdown output:
 ```bash
 ==================================================
-Received shutdown signal: SIGINT at 2025-06-20 01:55:48 UTC
+Received shutdown signal: SIGINT at 2025-06-20 04:23:48 UTC
 Starting graceful shutdown...
 ==================================================
+Error in server: name 't' is not defined
 
-Stopping HTTP server...
-Server stopped successfully
-
-Graceful shutdown completed
-
-Shutting down server...
+Shutting down servers...
 Server shutdown completed
 ```
 
@@ -151,11 +199,14 @@ Server shutdown completed
 ### Testing Examples
 Basic Test
 ```bash
-while true; do curl -w "Status: %{http_code}, Time: %{time_total}s\n" -s localhost:5678; sleep 1; done
-{"message": "Custom Response", "status": 200, "path": "/", "response_delay": 1.0}
-Status: 200, Time: 1.002810s
-{"message": "Custom Response", "status": 200, "path": "/", "response_delay": 1.0}
-Status: 200, Time: 1.002633s
+while true; do 
+    printf "Port 8080: "
+    curl -w "Status: %{http_code}, Time: %{time_total}s\n" -s -o /dev/null localhost:8080
+    printf "Port 8081: "
+    curl -w "Status: %{http_code}, Time: %{time_total}s\n" -s -o /dev/null localhost:8081
+    sleep 1
+done
+
 ```
 
 ### Contributing
