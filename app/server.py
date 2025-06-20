@@ -20,6 +20,7 @@ class PortConfig:
 server_ready = False
 startup_end_time = None
 servers = []  # List to keep track of all server instances
+server_threads = []  # List to keep track of all server threads
 
 # Parse port configurations from environment variables
 def get_port_configs():
@@ -47,7 +48,13 @@ class CustomHandler(http.server.SimpleHTTPRequestHandler):
         global server_ready, startup_end_time
         
         if not server_ready:
-            remaining = max(0, int(startup_end_time - time.time())) if startup_end_time else 0
+            # Calculate remaining startup time
+            if startup_end_time:
+                remaining = max(0, int(startup_end_time - time.time()))
+            else:
+                remaining = 0
+                
+            # Return 503 during startup
             self.send_response(503)
             self.send_header('Content-type', 'application/json')
             self.send_header('Retry-After', str(remaining))
@@ -63,6 +70,7 @@ class CustomHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(response_data).encode() + b'\n')
             return
 
+        # Normal request handling after startup
         time.sleep(self.port_config.response_delay)
         self.send_response(self.port_config.status_code)
         self.send_header('Content-type', 'application/json')
@@ -90,8 +98,8 @@ def create_server(port_config):
     return ThreadedHTTPServer(("", port_config.port), handler)
 
 def run_server():
-    global server_ready, startup_end_time, servers
-
+    global server_ready, startup_end_time, servers, server_threads
+    
     # Get configurations for all ports
     port_configs = get_port_configs()
     if not port_configs:
@@ -118,12 +126,12 @@ def run_server():
 
     def signal_handler(signum, frame):
         signal_name = signal.Signals(signum).name
-        shutdown_time = datetime.datetime.utcnow().strstrftime('%Y-%m-%d %H:%M:%S UTC')
+        shutdown_time = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
         print(f"\n{'='*50}")
         print(f"Received shutdown signal: {signal_name} at {shutdown_time}")
         print(f"Starting graceful shutdown...")
         print(f"{'='*50}")
-        print("\nStopping HTTP servers...")
+        print(t("\nStopping HTTP servers..."))
         for server in servers:
             server.shutdown()
             server.server_close()
@@ -140,9 +148,10 @@ def run_server():
         for config in port_configs:
             server = create_server(config)
             servers.append(server)
-            server_threadead = threading.Thread(target=server.serve_forever)
-            server_thread.daemon = True
-            server_thread.start()
+            thread = threading.Thread(target=server.serve_forever)
+            thread.daemon = True
+            server_threads.append(thread)
+            thread.start()
             print(f"\nServer is listening on port {config.port}")
 
         print(f"Starting initialization phase...")
@@ -160,10 +169,10 @@ def run_server():
         print(f"All servers are ready to accept connections at {ready_time}")
         print("="*50 + "\n")
         sys.stdout.flush()
-
+        
         while True:
             time.sleep(1)
-
+            
     except KeyboardInterrupt:
         print("\nReceived keyboard interrupt...")
     except Exception as e:
@@ -173,6 +182,9 @@ def run_server():
         for server in servers:
             server.shutdown()
             server.server_close()
+        # Wait for all threads to complete
+        for thread in server_threads:
+            thread.join(timeout=5)
         print("Server shutdown completed")
         sys.exit(0)
 
